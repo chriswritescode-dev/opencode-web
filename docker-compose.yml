@@ -1,0 +1,41 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: opencode-web
+    ports:
+      - "5001:5001"
+      - "5551:5551"
+    environment:
+      - NODE_ENV=production
+      - HOST=0.0.0.0
+      - PORT=5001
+      - OPENCODE_SERVER_PORT=5551
+      - DATABASE_PATH=/app/backend/data/opencode.db
+      - WORKSPACE_PATH=/workspace
+      - PROCESS_START_WAIT_MS=2000
+      - PROCESS_VERIFY_WAIT_MS=1000
+      - HEALTH_CHECK_INTERVAL_MS=5000
+      - HEALTH_CHECK_TIMEOUT_MS=30000
+      - MAX_FILE_SIZE_MB=50
+      - MAX_UPLOAD_SIZE_MB=50
+      - SANDBOX_TTL_HOURS=24
+      - CLEANUP_INTERVAL_MINUTES=60
+      - DEBUG=false
+    volumes:
+      - opencode-workspace:/workspace
+      - opencode-data:/app/backend/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/api/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  opencode-workspace:
+    driver: local
+  opencode-data:
+    driver: local

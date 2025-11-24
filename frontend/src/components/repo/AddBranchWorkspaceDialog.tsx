@@ -1,0 +1,130 @@
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { createRepo } from "@/api/repos";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Loader2 } from "lucide-react";
+
+interface AddBranchWorkspaceDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  repoUrl: string;
+}
+
+export function AddBranchWorkspaceDialog({
+  open,
+  onOpenChange,
+  repoUrl,
+}: AddBranchWorkspaceDialogProps) {
+  const [branch, setBranch] = useState("");
+  const [useWorktree, setUseWorktree] = useState(true);
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      createRepo(repoUrl, branch || undefined, undefined, useWorktree),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["repos"] });
+      setBranch("");
+      setUseWorktree(true);
+      onOpenChange(false);
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (branch.trim()) {
+      mutation.mutate();
+    }
+  };
+
+  const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    setUseWorktree(e.target.checked);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[90%] sm:max-w-[500px] bg-[#141414] border-[#2a2a2a]">
+        <DialogHeader>
+          <DialogTitle className="text-xl bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+            Add Branch Workspace
+          </DialogTitle>
+          <p className="text-sm text-zinc-400 mt-1">
+            Create a new workspace for{" "}
+            {repoUrl.split("/").pop()?.replace(".git", "")}
+          </p>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+          <div className="space-y-2">
+            <label className="text-sm text-zinc-400">Branch *</label>
+            <Input
+              placeholder="feature-branch, main, etc."
+              value={branch}
+              onChange={(e) => setBranch(e.target.value)}
+              disabled={mutation.isPending}
+              className="bg-[#1a1a1a] border-[#2a2a2a] text-white placeholder:text-zinc-500"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="worktree-checkbox"
+                checked={useWorktree}
+                onChange={handleCheckboxChange}
+                disabled={mutation.isPending}
+                className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-blue-600 focus:ring-2 cursor-pointer accent-blue-600"
+                onClick={(e) => e.stopPropagation()}
+              />
+              <label
+                htmlFor="worktree-checkbox"
+                className="text-sm text-zinc-400 cursor-pointer select-none"
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (!mutation.isPending) {
+                    setUseWorktree(!useWorktree);
+                  }
+                }}
+              >
+                Create as worktree
+              </label>
+            </div>
+            <p className="text-xs text-zinc-500">
+              {useWorktree
+                ? "Creates a git worktree - shares git history with base repo (recommended, faster)"
+                : "Creates a full clone - independent copy of the repository (slower, more disk space)"}
+            </p>
+          </div>
+
+          <Button
+            type="submit"
+            disabled={!branch || mutation.isPending}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            {mutation.isPending ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                {useWorktree ? "Creating worktree..." : "Cloning..."}
+              </>
+            ) : useWorktree ? (
+              "Create Worktree"
+            ) : (
+              "Clone Branch"
+            )}
+          </Button>
+          {mutation.isError && (
+            <p className="text-sm text-red-400">{mutation.error.message}</p>
+          )}
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}

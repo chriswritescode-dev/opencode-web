@@ -1,0 +1,37 @@
+{
+  "name": "opencode-webui",
+  "version": "0.25",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "predev": "bash scripts/setup-dev.sh",
+    "dev": "concurrently \"npm:dev:backend\" \"npm:dev:frontend\"",
+    "dev:backend": "bun --watch backend/src/index.ts",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build": "npm run build:backend && npm run build:frontend",
+    "build:backend": "cd backend && bun run build",
+    "build:frontend": "cd frontend && npm run build",
+    "test": "npm run test:backend",
+    "test:backend": "cd backend && bun test",
+    "generate:openapi": "bun scripts/generate-openapi.ts",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down -v",
+    "docker:logs": "docker-compose logs -f",
+    "docker:restart": "docker-compose restart",
+    "docker:dev": "docker-compose -f docker-compose.dev.yml up",
+    "docker:dev:down": "docker-compose -f docker-compose.dev.yml down -v"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "dependencies": {
+    "class-variance-authority": "^0.7.1",
+    "dotenv": "^17.2.3"
+  }
+}

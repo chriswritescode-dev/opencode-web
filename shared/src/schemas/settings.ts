@@ -1,0 +1,102 @@
+import { z } from "zod";
+
+export const CustomCommandSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  promptTemplate: z.string(),
+});
+
+export const CustomAgentSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  config: z.record(z.string(), z.any()),
+});
+
+export const DEFAULT_KEYBOARD_SHORTCUTS = {
+  submit: "shift+Enter",
+  abort: "Escape",
+  undo: "ctrl+Z",
+  redo: "ctrl+R",
+  compact: "ctrl",
+  newSession: "ctrl+N",
+  toggleMode: "Tab",
+  selectModel: "ctrl+M",
+};
+
+export const UserPreferencesSchema = z.object({
+  theme: z.enum(["dark", "light", "system"]),
+  mode: z.enum(["plan", "build"]),
+  defaultModel: z.string().optional(),
+  defaultAgent: z.string().optional(),
+  autoScroll: z.boolean(),
+  showReasoning: z.boolean(),
+  expandToolCalls: z.boolean(),
+  keyboardShortcuts: z.record(z.string(), z.string()),
+  customCommands: z.array(CustomCommandSchema),
+  customAgents: z.array(CustomAgentSchema),
+  gitToken: z.string().optional(),
+});
+
+export const DEFAULT_USER_PREFERENCES = {
+  theme: "dark" as const,
+  mode: "build" as const,
+  autoScroll: true,
+  showReasoning: false,
+  expandToolCalls: false,
+  keyboardShortcuts: DEFAULT_KEYBOARD_SHORTCUTS,
+  customCommands: [],
+  customAgents: [],
+  gitToken: undefined,
+};
+
+export const SettingsResponseSchema = z.object({
+  preferences: UserPreferencesSchema,
+  updatedAt: z.number(),
+});
+
+export const UpdateSettingsRequestSchema = z.object({
+  preferences: UserPreferencesSchema.partial(),
+});
+
+export const OpenCodeConfigSchema = z.object({
+  $schema: z.string().optional(),
+  theme: z.string().optional(),
+  model: z.string().optional(),
+  small_model: z.string().optional(),
+  provider: z.record(z.string(), z.any()).optional(),
+  agent: z.record(z.string(), z.any()).optional(),
+  command: z.record(z.string(), z.any()).optional(),
+  keybinds: z.record(z.string(), z.any()).optional(),
+  autoupdate: z.boolean().optional(),
+  formatter: z.record(z.string(), z.any()).optional(),
+  permission: z.record(z.string(), z.any()).optional(),
+  mcp: z.record(z.string(), z.any()).optional(),
+  instructions: z.array(z.string()).optional(),
+  disabled_providers: z.array(z.string()).optional(),
+  share: z.string().optional(),
+});
+
+export const OpenCodeConfigMetadataSchema = z.object({
+  id: z.number(),
+  name: z.string().min(1).max(255),
+  content: OpenCodeConfigSchema,
+  isDefault: z.boolean(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
+
+export const CreateOpenCodeConfigRequestSchema = z.object({
+  name: z.string().min(1).max(255),
+  content: OpenCodeConfigSchema,
+  isDefault: z.boolean().optional(),
+});
+
+export const UpdateOpenCodeConfigRequestSchema = z.object({
+  content: OpenCodeConfigSchema,
+  isDefault: z.boolean().optional(),
+});
+
+export const OpenCodeConfigResponseSchema = z.object({
+  configs: z.array(OpenCodeConfigMetadataSchema),
+  defaultConfig: OpenCodeConfigMetadataSchema.nullable(),
+});

@@ -1,0 +1,1 @@
+export const OPENCODE_API_ENDPOINT = '/api/opencode'
