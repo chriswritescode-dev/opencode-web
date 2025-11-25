@@ -30,7 +30,7 @@ export function createClientConfig(env: {
     : DEFAULTS.SERVER.PORT
 
   return {
-    API_BASE_URL: env.VITE_API_URL || `http://localhost:${serverPort}`,
+    API_BASE_URL: env.VITE_API_URL || '',
     SERVER_PORT: serverPort,
     OPENCODE_PORT: env.VITE_OPENCODE_PORT 
       ? parseInt(env.VITE_OPENCODE_PORT, 10) 
