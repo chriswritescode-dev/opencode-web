@@ -9,13 +9,13 @@ import { SessionDetailHeader } from "@/components/session/SessionDetailHeader";
 import { SessionList } from "@/components/session/SessionList";
 import { FileBrowserSheet } from "@/components/file-browser/FileBrowserSheet";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { useSession, useMessages, useAbortSession, useUpdateSession } from "@/hooks/useOpenCode";
+import { useSession, useAbortSession, useUpdateSession } from "@/hooks/useOpenCode";
 import { OPENCODE_API_ENDPOINT } from "@/config";
 import { useSSE } from "@/hooks/useSSE";
 import { useSettings } from "@/hooks/useSettings";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useSettingsDialog } from "@/hooks/useSettingsDialog";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { Loader2 } from "lucide-react";
 
 export function SessionDetail() {
@@ -28,9 +28,6 @@ export function SessionDetail() {
   const [sessionsDialogOpen, setSessionsDialogOpen] = useState(false);
   const [fileBrowserOpen, setFileBrowserOpen] = useState(false);
   const [selectedFilePath, setSelectedFilePath] = useState<string | undefined>();
-  const lastMessageCountRef = useRef(0);
-  const userJustSentMessageRef = useRef(false);
-  const hasInitialScrolledRef = useRef(false);
 
   const { data: repo, isLoading: repoLoading } = useQuery({
     queryKey: ["repo", repoId],
@@ -49,7 +46,6 @@ export function SessionDetail() {
     sessionId,
     repoDirectory,
   );
-  const { data: messages } = useMessages(opcodeUrl, sessionId, repoDirectory);
   const { isConnected } = useSSE(opcodeUrl, repoDirectory);
   const abortSession = useAbortSession(opcodeUrl, repoDirectory);
   const updateSession = useUpdateSession(opcodeUrl, repoDirectory);
@@ -83,50 +79,33 @@ export function SessionDetail() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [preferences?.mode, updateSettings]);
 
-  useEffect(() => {
-    if (!messageContainerRef.current) return;
+  
 
-    const container = messageContainerRef.current;
-    const currentMessageCount = messages?.length || 0;
-    const previousMessageCount = lastMessageCountRef.current;
-
-    if (!hasInitialScrolledRef.current && currentMessageCount > 0) {
-      hasInitialScrolledRef.current = true;
-      container.scrollTop = container.scrollHeight;
-      lastMessageCountRef.current = currentMessageCount;
-      return;
+  const handleFileClick = useCallback((filePath: string) => {
+    let pathToOpen = filePath
+    
+    if (filePath.startsWith('/') && repo?.fullPath) {
+      const workspaceReposPath = repo.fullPath.substring(0, repo.fullPath.lastIndexOf('/'))
+      
+      if (filePath.startsWith(workspaceReposPath + '/')) {
+        pathToOpen = filePath.substring(workspaceReposPath.length + 1)
+      }
     }
+    
+    setSelectedFilePath(pathToOpen)
+    setFileBrowserOpen(true)
+  }, [repo?.fullPath]);
 
-    const messageAdded = currentMessageCount > previousMessageCount;
-    lastMessageCountRef.current = currentMessageCount;
-
-    const lastMessage = messages?.[messages.length - 1];
-    const isUserMessage = lastMessage?.info.role === "user";
-
-    if (messageAdded && isUserMessage) {
-      userJustSentMessageRef.current = true;
-      container.scrollTop = container.scrollHeight;
-      return;
+  const handleSessionTitleUpdate = useCallback((newTitle: string) => {
+    if (sessionId) {
+      updateSession.mutate({ sessionID: sessionId, title: newTitle });
     }
+  }, [sessionId, updateSession]);
 
-    if (!preferences?.autoScroll) return;
-
-    const isNearBottom =
-      container.scrollHeight - container.scrollTop - container.clientHeight <
-      100;
-
-    if (userJustSentMessageRef.current || isNearBottom) {
-      container.scrollTop = container.scrollHeight;
-    }
-
-    if (
-      lastMessage?.info.role === "assistant" &&
-      "completed" in lastMessage.info.time &&
-      lastMessage.info.time.completed
-    ) {
-      userJustSentMessageRef.current = false;
-    }
-  }, [messages, preferences?.autoScroll]);
+  const handleFileBrowserClose = useCallback(() => {
+    setFileBrowserOpen(false)
+    setSelectedFilePath(undefined)
+  }, []);
 
   if (repoLoading || sessionLoading) {
     return (
@@ -151,28 +130,6 @@ export function SessionDetail() {
       </div>
     );
   }
-
-  const handleFileClick = (filePath: string) => {
-    
-    let pathToOpen = filePath
-    
-    if (filePath.startsWith('/') && repo.fullPath) {
-      const workspaceReposPath = repo.fullPath.substring(0, repo.fullPath.lastIndexOf('/'))
-      
-      if (filePath.startsWith(workspaceReposPath + '/')) {
-        pathToOpen = filePath.substring(workspaceReposPath.length + 1)
-      }
-    }
-    
-    setSelectedFilePath(pathToOpen)
-    setFileBrowserOpen(true)
-  };
-
-  const handleSessionTitleUpdate = (newTitle: string) => {
-    if (sessionId) {
-      updateSession.mutate({ sessionID: sessionId, title: newTitle });
-    }
-  };
   
   
   return (
@@ -198,6 +155,7 @@ export function SessionDetail() {
               sessionID={sessionId} 
               directory={repoDirectory}
               onFileClick={handleFileClick}
+              containerRef={messageContainerRef}
             />
           )}
         </div>
@@ -257,10 +215,7 @@ export function SessionDetail() {
 
       <FileBrowserSheet
         isOpen={fileBrowserOpen}
-        onClose={() => {
-          setFileBrowserOpen(false)
-          setSelectedFilePath(undefined)
-        }}
+        onClose={handleFileBrowserClose}
         basePath={repo.localPath}
         repoName={repo.repoUrl.split("/").pop()?.replace(".git", "") || "Repository"}
         initialSelectedFile={selectedFilePath}

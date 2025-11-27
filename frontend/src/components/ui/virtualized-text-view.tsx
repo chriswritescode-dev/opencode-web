@@ -1,5 +1,7 @@
-import { useRef, useCallback, useEffect, useState, useMemo, forwardRef, useImperativeHandle } from 'react'
+import { useRef, useCallback, useEffect, useState, useMemo, forwardRef, useImperativeHandle, memo } from 'react'
 import { useVirtualizedContent } from '@/hooks/useVirtualizedContent'
+import { useMobile } from '@/hooks/useMobile'
+import { GPU_ACCELERATED_STYLE } from '@/lib/utils'
 
 interface VirtualizedTextViewProps {
   filePath: string
@@ -18,7 +20,113 @@ export interface VirtualizedTextViewHandle {
 }
 
 const LINE_HEIGHT = 20
-const GUTTER_WIDTH = 40
+const GUTTER_WIDTH = 48
+const CHAR_WIDTH_ESTIMATE = 8.5
+const CONTENT_PADDING = 24
+
+let measureCanvas: HTMLCanvasElement | null = null
+let measureContext: CanvasRenderingContext2D | null = null
+
+function getTextWidth(text: string): number {
+  if (!measureCanvas) {
+    measureCanvas = document.createElement('canvas')
+    measureContext = measureCanvas.getContext('2d')
+    if (measureContext) {
+      measureContext.font = '14px ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace'
+    }
+  }
+  if (measureContext) {
+    return measureContext.measureText(text).width
+  }
+  return text.length * CHAR_WIDTH_ESTIMATE
+}
+
+function calculateWrappedLineCount(
+  content: string,
+  containerWidth: number
+): number {
+  if (!content || containerWidth <= GUTTER_WIDTH + CONTENT_PADDING) return 1
+  const availableWidth = containerWidth - GUTTER_WIDTH - CONTENT_PADDING
+  const textWidth = getTextWidth(content)
+  return Math.max(1, Math.ceil(textWidth / availableWidth))
+}
+
+interface VirtualizedLineProps {
+  lineNum: number
+  content: string
+  isEdited: boolean
+  height: number
+  top: number
+  isHighlighted: boolean
+  lineHeight: number
+  editable: boolean
+  lineWrap: boolean
+  isLoaded: boolean
+  onLineChange: (lineNum: number, value: string) => void
+}
+
+const VirtualizedLine = memo(function VirtualizedLine({
+  lineNum,
+  content,
+  isEdited,
+  height,
+  top,
+  isHighlighted,
+  lineHeight,
+  editable,
+  lineWrap,
+  isLoaded,
+  onLineChange,
+}: VirtualizedLineProps) {
+  return (
+    <div
+      className={`absolute flex overflow-hidden ${isHighlighted ? 'bg-yellow-500/30' : 'bg-background'}`}
+      style={{
+        transform: `translate3d(0, ${top}px, 0)`,
+        height,
+        left: 0,
+        right: 0,
+      }}
+    >
+      <div
+        className="flex-shrink-0 text-center text-muted-foreground select-none bg-muted/50 border-r border-border self-start"
+        style={{ width: GUTTER_WIDTH, height: lineHeight, lineHeight: `${lineHeight}px` }}
+      >
+        {lineNum + 1}
+      </div>
+      
+      {!isLoaded ? (
+        <div 
+          className="flex-1 pl-2 bg-muted/30 animate-pulse"
+          style={{ lineHeight: `${lineHeight}px` }}
+        >
+          <div className="h-3 w-3/4 bg-muted/50 rounded my-1" />
+        </div>
+      ) : editable ? (
+        <input
+          type="text"
+          value={content}
+          onChange={(e) => onLineChange(lineNum, e.target.value)}
+          className={`flex-1 bg-transparent outline-none pl-2 ${
+            isEdited ? 'bg-yellow-500/10' : ''
+          } ${
+            lineWrap ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'
+          }`}
+          style={{ lineHeight: `${lineHeight}px` }}
+        />
+      ) : (
+        <div
+          className={`flex-1 pl-2 ${
+            lineWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre overflow-hidden text-ellipsis'
+          }`}
+          style={{ lineHeight: `${lineHeight}px` }}
+        >
+          {content}
+        </div>
+      )}
+    </div>
+  )
+})
 
 export const VirtualizedTextView = forwardRef<VirtualizedTextViewHandle, VirtualizedTextViewProps>(function VirtualizedTextView({
   filePath,
@@ -32,9 +140,27 @@ export const VirtualizedTextView = forwardRef<VirtualizedTextViewHandle, Virtual
   lineWrap = false,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const [scrollTop, setScrollTop] = useState(0)
+  const scrollTopRef = useRef(0)
+  const [renderTrigger, setRenderTrigger] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(600)
+  const [containerWidth, setContainerWidth] = useState(0)
   const [highlightedLine, setHighlightedLine] = useState<number | undefined>(initialLineNumber)
+  const loadedBufferRef = useRef<{ start: number; end: number }>({ start: 0, end: 0 })
+  const heightCacheRef = useRef<Map<number, number>>(new Map())
+  const lineOffsetsRef = useRef<{ offsets: Map<number, { height: number; top: number }>; totalHeight: number } | null>(null)
+  const lastContainerWidthRef = useRef(0)
+  const lastTotalLinesRef = useRef(0)
+  const lastVisibleRangeRef = useRef<{ start: number; end: number }>({ start: 0, end: 0 })
+  const currentVisibleRangeRef = useRef<{ start: number; end: number }>({ start: 0, end: 200 })
+  const scrollRafRef = useRef<number | null>(null)
+  const isMobile = useMobile()
+  
+  void renderTrigger
+  
+  const chunkSize = isMobile && lineWrap ? 800 : 400
+  const overscan = isMobile && lineWrap ? 200 : 100
+  const bufferMultiplier = 4
+  const preRenderMultiplier = 3
   
   const {
     lines,
@@ -48,11 +174,10 @@ export const VirtualizedTextView = forwardRef<VirtualizedTextViewHandle, Virtual
     saveEdits,
     isSaving,
     hasUnsavedChanges,
-    prefetchAdjacent,
   } = useVirtualizedContent({
     filePath,
-    chunkSize: 200,
-    overscan: 50,
+    chunkSize,
+    overscan,
     enabled: true,
     initialTotalLines,
   })
@@ -61,15 +186,11 @@ export const VirtualizedTextView = forwardRef<VirtualizedTextViewHandle, Virtual
     onSaveStateChange?.(hasUnsavedChanges)
   }, [hasUnsavedChanges, onSaveStateChange])
   
-  const visibleRange = useMemo(() => {
-    return getVisibleRange(scrollTop, viewportHeight, lineHeight)
-  }, [scrollTop, viewportHeight, lineHeight, getVisibleRange])
-  
   useEffect(() => {
-    const { start, end } = visibleRange
-    loadRange(start, end)
-    prefetchAdjacent(start, end)
-  }, [visibleRange, loadRange, prefetchAdjacent])
+    loadedBufferRef.current = { start: 0, end: 0 }
+    heightCacheRef.current.clear()
+    lineOffsetsRef.current = null
+  }, [filePath])
   
   useEffect(() => {
     const container = containerRef.current
@@ -78,29 +199,180 @@ export const VirtualizedTextView = forwardRef<VirtualizedTextViewHandle, Virtual
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         setViewportHeight(entry.contentRect.height)
+        const newWidth = entry.contentRect.width
+        if (newWidth !== containerWidth) {
+          heightCacheRef.current.clear()
+          setContainerWidth(newWidth)
+        }
       }
     })
     
     resizeObserver.observe(container)
     return () => resizeObserver.disconnect()
-  }, [])
-
-  useEffect(() => {
-    if (initialLineNumber && containerRef.current) {
-      const scrollPosition = (initialLineNumber - 1) * lineHeight
-      setHighlightedLine(initialLineNumber)
-      setTimeout(() => {
-        containerRef.current?.scrollTo({ top: scrollPosition, behavior: 'smooth' })
-      }, 100)
-      setTimeout(() => {
-        setHighlightedLine(undefined)
-      }, 3000)
+  }, [containerWidth])
+  
+  const lineOffsets = useMemo(() => {
+    if (!lineWrap || containerWidth === 0) return null
+    
+    const widthChanged = lastContainerWidthRef.current !== containerWidth
+    const totalLinesChanged = lastTotalLinesRef.current !== totalLines
+    
+    if (widthChanged) {
+      heightCacheRef.current.clear()
+      lineOffsetsRef.current = null
     }
-  }, [initialLineNumber, lineHeight])
+    
+    lastContainerWidthRef.current = containerWidth
+    lastTotalLinesRef.current = totalLines
+    
+    const offsets = new Map<number, { height: number; top: number }>()
+    const cache = heightCacheRef.current
+    let cumulativeTop = 0
+    let hasChanges = false
+    
+    for (let i = 0; i < totalLines; i++) {
+      const editedContent = editedLines.get(i)
+      const lineData = lines.get(i)
+      const content = editedContent ?? lineData?.content ?? ''
+      
+      let height: number
+      
+      if (cache.has(i)) {
+        height = cache.get(i)!
+      } else if (content) {
+        const wrappedCount = calculateWrappedLineCount(content, containerWidth)
+        height = wrappedCount * lineHeight
+        cache.set(i, height)
+        hasChanges = true
+      } else {
+        height = lineHeight
+      }
+      
+      offsets.set(i, { height, top: cumulativeTop })
+      cumulativeTop += height
+    }
+    
+    if (!hasChanges && !totalLinesChanged && lineOffsetsRef.current) {
+      return lineOffsetsRef.current
+    }
+    
+    const result = { offsets, totalHeight: cumulativeTop }
+    lineOffsetsRef.current = result
+    return result
+  }, [lineWrap, containerWidth, totalLines, lines, editedLines, lineHeight])
+  
+  const totalHeight = lineOffsets?.totalHeight ?? totalLines * lineHeight
+  
+  const lineOffsetsForCalcRef = useRef(lineOffsets)
+  lineOffsetsForCalcRef.current = lineOffsets
+  
+  const calculateVisibleRange = useCallback((scrollTop: number) => {
+    const currentLineOffsets = lineOffsetsForCalcRef.current
+    if (currentLineOffsets) {
+      const searchTop = scrollTop - overscan * lineHeight
+      const searchBottom = scrollTop + viewportHeight + overscan * lineHeight
+      
+      let low = 0
+      let high = totalLines - 1
+      let startLine = 0
+      
+      while (low <= high) {
+        const mid = Math.floor((low + high) / 2)
+        const offset = currentLineOffsets.offsets.get(mid)
+        if (!offset) break
+        
+        if (offset.top + offset.height < searchTop) {
+          low = mid + 1
+        } else {
+          startLine = mid
+          high = mid - 1
+        }
+      }
+      
+      low = startLine
+      high = totalLines - 1
+      let endLine = totalLines
+      
+      while (low <= high) {
+        const mid = Math.floor((low + high) / 2)
+        const offset = currentLineOffsets.offsets.get(mid)
+        if (!offset) break
+        
+        if (offset.top <= searchBottom) {
+          low = mid + 1
+        } else {
+          endLine = mid
+          high = mid - 1
+        }
+      }
+      
+      return { start: Math.max(0, startLine), end: Math.min(totalLines, endLine) }
+    }
+    
+    return getVisibleRange(scrollTop, viewportHeight, lineHeight)
+  }, [viewportHeight, lineHeight, getVisibleRange, totalLines, overscan])
+  
+  const visibleRange = useMemo(() => {
+    const range = calculateVisibleRange(scrollTopRef.current)
+    currentVisibleRangeRef.current = range
+    return range
+  }, [calculateVisibleRange, renderTrigger])
+  
+  useEffect(() => {
+    const { start, end } = visibleRange
+    const buffer = loadedBufferRef.current
+    const visibleCount = end - start
+    const desiredBuffer = visibleCount * bufferMultiplier
+    
+    const needsLoadBefore = start < buffer.start + visibleCount
+    const needsLoadAfter = end > buffer.end - visibleCount
+    
+    if (needsLoadBefore || needsLoadAfter || buffer.start === 0 && buffer.end === 0) {
+      const newStart = Math.max(0, start - desiredBuffer)
+      const newEnd = Math.min(totalLines, end + desiredBuffer)
+      
+      loadedBufferRef.current = { start: newStart, end: newEnd }
+      loadRange(newStart, newEnd)
+    }
+  }, [visibleRange, loadRange, totalLines, bufferMultiplier])
+
+  const lastRenderTimeRef = useRef(0)
+  const pendingRenderRef = useRef(false)
+  const RENDER_THROTTLE_MS = 32
   
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    setScrollTop(e.currentTarget.scrollTop)
-  }, [])
+    const newScrollTop = e.currentTarget.scrollTop
+    scrollTopRef.current = newScrollTop
+    
+    if (scrollRafRef.current) {
+      cancelAnimationFrame(scrollRafRef.current)
+    }
+    
+    scrollRafRef.current = requestAnimationFrame(() => {
+      const newRange = calculateVisibleRange(newScrollTop)
+      const currentRange = currentVisibleRangeRef.current
+      
+      const rangeChanged = newRange.start !== currentRange.start || newRange.end !== currentRange.end
+      if (!rangeChanged) return
+      
+      currentVisibleRangeRef.current = newRange
+      
+      const now = performance.now()
+      const timeSinceLastRender = now - lastRenderTimeRef.current
+      
+      if (timeSinceLastRender >= RENDER_THROTTLE_MS) {
+        lastRenderTimeRef.current = now
+        setRenderTrigger(t => t + 1)
+      } else if (!pendingRenderRef.current) {
+        pendingRenderRef.current = true
+        setTimeout(() => {
+          pendingRenderRef.current = false
+          lastRenderTimeRef.current = performance.now()
+          setRenderTrigger(t => t + 1)
+        }, RENDER_THROTTLE_MS - timeSinceLastRender)
+      }
+    })
+  }, [calculateVisibleRange])
   
   const handleLineChange = useCallback((lineNum: number, value: string) => {
     setLineContent(lineNum, value)
@@ -128,24 +400,62 @@ export const VirtualizedTextView = forwardRef<VirtualizedTextViewHandle, Virtual
     }
   }, [hasUnsavedChanges, isSaving, handleSave])
   
-  const totalHeight = totalLines * lineHeight
+  useEffect(() => {
+    if (initialLineNumber && containerRef.current) {
+      const offsetData = lineOffsets?.offsets.get(initialLineNumber - 1)
+      const scrollPosition = offsetData?.top ?? (initialLineNumber - 1) * lineHeight
+      setHighlightedLine(initialLineNumber)
+      setTimeout(() => {
+        containerRef.current?.scrollTo({ top: scrollPosition, behavior: 'smooth' })
+      }, 100)
+      setTimeout(() => {
+        setHighlightedLine(undefined)
+      }, 3000)
+    }
+  }, [initialLineNumber, lineHeight, lineOffsets])
   
   const visibleLines = useMemo(() => {
-    const result: Array<{ lineNum: number; content: string; isEdited: boolean }> = []
+    const result: Array<{ lineNum: number; content: string; isEdited: boolean; height: number; top: number; isLoaded: boolean }> = []
     
-    for (let i = visibleRange.start; i < visibleRange.end; i++) {
+    const lastRange = lastVisibleRangeRef.current
+    const visibleCount = visibleRange.end - visibleRange.start
+    const maxExpansion = visibleCount * preRenderMultiplier
+    
+    const expandedStart = Math.max(
+      0,
+      visibleRange.start - maxExpansion,
+      Math.min(visibleRange.start, lastRange.start)
+    )
+    const expandedEnd = Math.min(
+      totalLines,
+      visibleRange.end + maxExpansion,
+      Math.max(visibleRange.end, lastRange.end)
+    )
+    
+    lastVisibleRangeRef.current = visibleRange
+    
+    for (let i = expandedStart; i < expandedEnd; i++) {
       const editedContent = editedLines.get(i)
       const lineData = lines.get(i)
+      const isLoaded = lineData?.loaded === true || editedContent !== undefined
+      const content = editedContent ?? lineData?.content ?? ''
+      
+      const offsetData = lineOffsets?.offsets.get(i)
+      const height = offsetData?.height ?? lineHeight
+      const top = offsetData?.top ?? i * lineHeight
       
       result.push({
         lineNum: i,
-        content: editedContent ?? lineData?.content ?? '',
+        content: isLoaded ? content : '',
         isEdited: editedContent !== undefined,
+        height,
+        top,
+        isLoaded,
       })
     }
     
     return result
-  }, [visibleRange, lines, editedLines])
+  }, [visibleRange, lines, editedLines, lineOffsets, lineHeight, totalLines, preRenderMultiplier])
   
   if (error) {
     return (
@@ -158,61 +468,39 @@ export const VirtualizedTextView = forwardRef<VirtualizedTextViewHandle, Virtual
   return (
     <div
       ref={containerRef}
-      className={`relative font-mono text-sm ${className} ${
-        lineWrap ? 'overflow-x-hidden' : 'overflow-auto'
+      className={`relative font-mono text-sm bg-background ${className} ${
+        lineWrap ? 'overflow-x-hidden overflow-y-auto' : 'overflow-auto'
       }`}
       onScroll={handleScroll}
       onKeyDown={handleKeyDown}
-      style={{ height: '100%' }}
+      style={{ height: '100%', ...GPU_ACCELERATED_STYLE }}
     >
-      <div style={{ height: totalHeight, position: 'relative' }}>
-        {visibleLines.map(({ lineNum, content, isEdited }) => {
-          const isHighlighted = highlightedLine === lineNum + 1
-          return (
-          <div
+      <div style={{ height: totalHeight, position: 'relative' }} className="bg-background">
+        {visibleLines.map(({ lineNum, content, isEdited, height, top, isLoaded }) => (
+          <VirtualizedLine
             key={lineNum}
-            className={`absolute flex transition-colors duration-300 ${isHighlighted ? 'bg-yellow-500/30' : ''}`}
-            style={{
-              top: lineNum * lineHeight,
-              height: lineHeight,
-              left: 0,
-              right: 0,
-            }}
-          >
-            <div
-              className="flex-shrink-0 text-center text-muted-foreground select-none bg-muted/50 border-r border-border"
-              style={{ width: GUTTER_WIDTH }}
-            >
-              {lineNum + 1}
-            </div>
-            
-            {editable ? (
-              <input
-                type="text"
-                value={content}
-                onChange={(e) => handleLineChange(lineNum, e.target.value)}
-                className={`flex-1 bg-transparent outline-none pl-2 ${
-                  isEdited ? 'bg-yellow-500/10' : ''
-                } ${
-                  lineWrap ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'
-                }`}
-                style={{ lineHeight: `${lineHeight}px` }}
-              />
-            ) : (
-              <div
-                className={`flex-1 pl-2 ${
-                  lineWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre overflow-hidden text-ellipsis'
-                }`}
-                style={{ lineHeight: `${lineHeight}px` }}
-              >
-                {content}
-              </div>
-            )}
-          </div>
-        )})}
+            lineNum={lineNum}
+            content={content}
+            isEdited={isEdited}
+            height={height}
+            top={top}
+            isHighlighted={highlightedLine === lineNum + 1}
+            lineHeight={lineHeight}
+            editable={editable}
+            lineWrap={lineWrap}
+            isLoaded={isLoaded}
+            onLineChange={handleLineChange}
+          />
+        ))}
         
-        {isLoading && visibleLines.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+        {visibleLines.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground bg-background">
+            {isLoading ? 'Loading...' : 'No content'}
+          </div>
+        )}
+        
+        {isLoading && visibleLines.length > 0 && (
+          <div className="absolute top-2 right-2 px-2 py-1 bg-muted/80 rounded text-xs text-muted-foreground">
             Loading...
           </div>
         )}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, memo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { DeleteDialog } from '@/components/ui/delete-dialog'
@@ -215,7 +215,7 @@ function TreeNode({ file, level, onFileSelect, onDirectoryClick, selectedFile, o
   )
 }
 
-export function FileTree({ files, onFileSelect, onDirectoryClick, selectedFile, onDelete, onRename, currentPath = '', basePath = '' }: FileTreeProps) {
+export const FileTree = memo(function FileTree({ files, onFileSelect, onDirectoryClick, selectedFile, onDelete, onRename, currentPath = '', basePath = '' }: FileTreeProps) {
   const handleGoUp = () => {
     // If currentPath has content and is different from basePath, go up
     if (currentPath !== basePath) {
@@ -262,4 +262,4 @@ export function FileTree({ files, onFileSelect, onDirectoryClick, selectedFile, 
       )}
     </div>
   )
-}
+})

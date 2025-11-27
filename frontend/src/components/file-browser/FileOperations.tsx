@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, memo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
@@ -10,7 +10,7 @@ interface FileOperationsProps {
   onCreate: (name: string, type: 'file' | 'folder') => void
 }
 
-export function FileOperations({ onUpload, onCreate }: FileOperationsProps) {
+export const FileOperations = memo(function FileOperations({ onUpload, onCreate }: FileOperationsProps) {
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [createType, setCreateType] = useState<'file' | 'folder'>('file')
   const [createName, setCreateName] = useState('')
@@ -103,4 +103,4 @@ export function FileOperations({ onUpload, onCreate }: FileOperationsProps) {
       </Dialog>
     </div>
   )
-}
+})

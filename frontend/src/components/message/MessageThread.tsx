@@ -1,4 +1,6 @@
+import { memo, useRef, useEffect } from 'react'
 import { useMessages } from '@/hooks/useOpenCode'
+import { useSettings } from '@/hooks/useSettings'
 import { MessagePart } from './MessagePart'
 import type { MessageWithParts } from '@/api/types'
 
@@ -7,6 +9,7 @@ interface MessageThreadProps {
   sessionID: string
   directory?: string
   onFileClick?: (filePath: string, lineNumber?: number) => void
+  containerRef?: React.RefObject<HTMLDivElement | null>
 }
 
 const isMessageStreaming = (msg: MessageWithParts): boolean => {
@@ -19,8 +22,56 @@ const isMessageThinking = (msg: MessageWithParts): boolean => {
   return msg.parts.length === 0 && isMessageStreaming(msg)
 }
 
-export function MessageThread({ opcodeUrl, sessionID, directory, onFileClick }: MessageThreadProps) {
+export const MessageThread = memo(function MessageThread({ opcodeUrl, sessionID, directory, onFileClick, containerRef }: MessageThreadProps) {
   const { data: messages, isLoading, error } = useMessages(opcodeUrl, sessionID, directory)
+  const { preferences } = useSettings()
+  const lastMessageCountRef = useRef(0)
+  const userJustSentMessageRef = useRef(false)
+  const hasInitialScrolledRef = useRef(false)
+  
+  useEffect(() => {
+    if (!containerRef?.current || !messages) return
+
+    const container = containerRef.current
+    const currentMessageCount = messages.length
+    const previousMessageCount = lastMessageCountRef.current
+
+    if (!hasInitialScrolledRef.current && currentMessageCount > 0) {
+      hasInitialScrolledRef.current = true
+      container.scrollTop = container.scrollHeight
+      lastMessageCountRef.current = currentMessageCount
+      return
+    }
+
+    const messageAdded = currentMessageCount > previousMessageCount
+    lastMessageCountRef.current = currentMessageCount
+
+    const lastMessage = messages[messages.length - 1]
+    const isUserMessage = lastMessage?.info.role === 'user'
+
+    if (messageAdded && isUserMessage) {
+      userJustSentMessageRef.current = true
+      container.scrollTop = container.scrollHeight
+      return
+    }
+
+    if (!preferences?.autoScroll) return
+
+    const isNearBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight < 100
+
+    if (userJustSentMessageRef.current || isNearBottom) {
+      container.scrollTop = container.scrollHeight
+    }
+
+    if (
+      lastMessage?.info.role === 'assistant' &&
+      'completed' in lastMessage.info.time &&
+      lastMessage.info.time.completed
+    ) {
+      userJustSentMessageRef.current = false
+    }
+  }, [messages, preferences?.autoScroll, containerRef])
 
   if (isLoading) {
     return (
@@ -106,4 +157,4 @@ export function MessageThread({ opcodeUrl, sessionID, directory, onFileClick }: 
       })}
     </div>
   )
-}
+})

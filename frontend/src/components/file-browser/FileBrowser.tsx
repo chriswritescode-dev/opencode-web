@@ -104,10 +104,10 @@ useEffect(() => {
     }
   }, [onFileSelect, isMobile])
 
-  const handleCloseModal = () => {
+  const handleCloseModal = useCallback(() => {
     setIsPreviewModalOpen(false)
     setSelectedFile(null)
-  }
+  }, [])
 
   const handleDirectoryClick = (path: string) => {
     loadFiles(path)
@@ -117,7 +117,7 @@ useEffect(() => {
     loadFiles(currentPath)
   }
 
-  const handleUpload = async (files: FileList) => {
+  const handleUpload = useCallback(async (files: FileList) => {
     const formData = new FormData()
     formData.append('file', files[0])
     
@@ -135,9 +135,9 @@ useEffect(() => {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
     }
-  }
+  }, [currentPath])
 
-  const handleCreateFile = async (name: string, type: 'file' | 'folder') => {
+  const handleCreateFile = useCallback(async (name: string, type: 'file' | 'folder') => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/files/${currentPath}/${name}`, {
         method: 'PUT',
@@ -153,9 +153,9 @@ useEffect(() => {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Create failed')
     }
-  }
+  }, [currentPath])
 
-  const handleDelete = async (path: string) => {
+  const handleDelete = useCallback(async (path: string) => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/files/${path}`, {
         method: 'DELETE',
@@ -170,9 +170,9 @@ useEffect(() => {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Delete failed')
     }
-  }
+  }, [currentPath])
 
-  const handleRename = async (oldPath: string, newPath: string) => {
+  const handleRename = useCallback(async (oldPath: string, newPath: string) => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/files/${oldPath}`, {
         method: 'PATCH',
@@ -188,7 +188,7 @@ useEffect(() => {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Rename failed')
     }
-  }
+  }, [currentPath])
 
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault()

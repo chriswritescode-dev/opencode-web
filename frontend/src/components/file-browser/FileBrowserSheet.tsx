@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, memo, useCallback } from 'react'
 import { FileBrowser } from './FileBrowser'
 import { Button } from '@/components/ui/button'
 import { PathDisplay } from '@/components/ui/path-display'
 import { X } from 'lucide-react'
+import { GPU_ACCELERATED_STYLE, MODAL_TRANSITION_MS } from '@/lib/utils'
 
 interface FileBrowserSheetProps {
   isOpen: boolean
@@ -12,11 +13,21 @@ interface FileBrowserSheetProps {
   initialSelectedFile?: string
 }
 
-export function FileBrowserSheet({ isOpen, onClose, basePath = '', repoName, initialSelectedFile }: FileBrowserSheetProps) {
+export const FileBrowserSheet = memo(function FileBrowserSheet({ isOpen, onClose, basePath = '', repoName, initialSelectedFile }: FileBrowserSheetProps) {
   const normalizedBasePath = basePath || '.'
   const [isEditing, setIsEditing] = useState(false)
   const [displayPath, setDisplayPath] = useState<string>('/')
-  const handleDirectoryLoad = (info: { workspaceRoot?: string; currentPath: string }) => {
+  const [shouldRender, setShouldRender] = useState(false)
+  
+  useEffect(() => {
+    if (isOpen) {
+      setShouldRender(true)
+    } else {
+      const timer = setTimeout(() => setShouldRender(false), MODAL_TRANSITION_MS)
+      return () => clearTimeout(timer)
+    }
+  }, [isOpen])
+  const handleDirectoryLoad = useCallback((info: { workspaceRoot?: string; currentPath: string }) => {
     if (!info.currentPath || info.currentPath === '.' || info.currentPath === '') {
       setDisplayPath('/')
       return
@@ -35,7 +46,7 @@ export function FileBrowserSheet({ isOpen, onClose, basePath = '', repoName, ini
     } else {
       setDisplayPath('/' + pathParts.join('/'))
     }
-  }
+  }, [repoName])
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -61,12 +72,21 @@ export function FileBrowserSheet({ isOpen, onClose, basePath = '', repoName, ini
     }
   }, [isOpen, onClose])
 
-  if (!isOpen) return null
+  if (!isOpen && !shouldRender) return null
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm">
-      <div className="absolute inset-0 bg-background flex flex-col">
-        {/* Header */}
+    <div 
+      className="fixed inset-0 z-50"
+      style={{
+        opacity: isOpen ? 1 : 0,
+        pointerEvents: isOpen ? 'auto' : 'none',
+        transition: 'opacity 150ms ease-out',
+      }}
+    >
+      <div 
+        className="absolute inset-0 bg-background flex flex-col"
+        style={GPU_ACCELERATED_STYLE}
+      >
         <div className="flex-shrink-0 border-b border-border bg-background backdrop-blur-sm px-4 py-1">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -90,7 +110,6 @@ export function FileBrowserSheet({ isOpen, onClose, basePath = '', repoName, ini
           </div>
         </div>
 
-        {/* File Browser Content */}
         <div className="flex-1 overflow-hidden min-h-0">
           <FileBrowser 
             basePath={normalizedBasePath}
@@ -102,4 +121,4 @@ export function FileBrowserSheet({ isOpen, onClose, basePath = '', repoName, ini
       </div>
     </div>
   )
-}
+})

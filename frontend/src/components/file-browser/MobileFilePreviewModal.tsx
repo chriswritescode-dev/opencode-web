@@ -1,6 +1,7 @@
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { memo, useCallback, useState, useEffect, useRef } from "react";
 import { FilePreview } from "./FilePreview";
 import type { FileInfo } from "@/types/files";
+import { GPU_ACCELERATED_STYLE, MODAL_TRANSITION_MS } from "@/lib/utils";
 
 interface MobileFilePreviewModalProps {
   isOpen: boolean;
@@ -9,33 +10,51 @@ interface MobileFilePreviewModalProps {
   showFilePreviewHeader?: boolean;
 }
 
-export function MobileFilePreviewModal({
+export const MobileFilePreviewModal = memo(function MobileFilePreviewModal({
   isOpen,
   onClose,
   file,
   showFilePreviewHeader = false,
 }: MobileFilePreviewModalProps) {
-  if (!file || file.isDirectory) {
+  const [localFile, setLocalFile] = useState<FileInfo | null>(null);
+  const isClosingRef = useRef(false);
+
+  useEffect(() => {
+    if (isOpen && file && !file.isDirectory) {
+      setLocalFile(file);
+      isClosingRef.current = false;
+    }
+  }, [isOpen, file]);
+
+  const handleClose = useCallback(() => {
+    if (isClosingRef.current) return;
+    isClosingRef.current = true;
+    onClose();
+    setTimeout(() => {
+      setLocalFile(null);
+      isClosingRef.current = false;
+    }, MODAL_TRANSITION_MS);
+  }, [onClose]);
+
+  if (!isOpen || !localFile) {
     return null;
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent
-        className="w-screen h-screen max-w-none max-h-none p-0 bg-background border-0 flex flex-col"
-        hideCloseButton
+    <div 
+      className="fixed inset-0 z-50 bg-background"
+      style={{ isolation: 'isolate', ...GPU_ACCELERATED_STYLE }}
+    >
+      <div
+        className={`h-full overflow-hidden bg-background ${showFilePreviewHeader ? "" : "pb-8"}`}
       >
-        <div
-          className={`flex-1 overflow-hidden min-h-0 ${showFilePreviewHeader ? "" : "pb-8"}`}
-        >
-          <FilePreview
-            file={file}
-            hideHeader={!showFilePreviewHeader}
-            isMobileModal={showFilePreviewHeader}
-            onCloseModal={onClose}
-          />
-        </div>
-      </DialogContent>
-    </Dialog>
+        <FilePreview
+          file={localFile}
+          hideHeader={!showFilePreviewHeader}
+          isMobileModal={showFilePreviewHeader}
+          onCloseModal={handleClose}
+        />
+      </div>
+    </div>
   );
-}
+})
