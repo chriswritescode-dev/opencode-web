@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback } from 'react'
 
-const SCROLL_THRESHOLD = 100
+const SCROLL_LOCK_MS = 300
 
 interface MessageInfo {
   role: string
@@ -27,23 +27,25 @@ export function useAutoScroll<T extends Message>({
   sessionId,
   onScrollStateChange
 }: UseAutoScrollOptions<T>): UseAutoScrollReturn {
-  const isFollowingRef = useRef(true)
   const lastMessageCountRef = useRef(0)
   const hasInitialScrolledRef = useRef(false)
-  const isProgrammaticScrollRef = useRef(false)
+  const userScrolledAtRef = useRef(0)
+  const userDisengagedRef = useRef(false)
+  const pointerStartYRef = useRef<number | null>(null)
 
   const scrollToBottom = useCallback(() => {
     if (!containerRef?.current) return
-    isProgrammaticScrollRef.current = true
+    userScrolledAtRef.current = 0
+    userDisengagedRef.current = false
     containerRef.current.scrollTop = containerRef.current.scrollHeight
-    isFollowingRef.current = true
     onScrollStateChange?.(false)
   }, [containerRef, onScrollStateChange])
 
   useEffect(() => {
-    isFollowingRef.current = true
     lastMessageCountRef.current = 0
     hasInitialScrolledRef.current = false
+    userScrolledAtRef.current = 0
+    userDisengagedRef.current = false
   }, [sessionId])
 
   useEffect(() => {
@@ -51,21 +53,54 @@ export function useAutoScroll<T extends Message>({
     
     const container = containerRef.current
     
-    const handleScroll = () => {
-      if (isProgrammaticScrollRef.current) {
-        isProgrammaticScrollRef.current = false
-        return
+    const markDisengaged = () => {
+      userScrolledAtRef.current = Date.now()
+      userDisengagedRef.current = true
+      onScrollStateChange?.(true)
+    }
+
+    const handlePointerDown = (e: PointerEvent) => {
+      pointerStartYRef.current = e.clientY
+    }
+
+    const handlePointerMove = (e: PointerEvent) => {
+      if (pointerStartYRef.current === null) return
+      if (e.clientY > pointerStartYRef.current) {
+        markDisengaged()
       }
-      
-      isFollowingRef.current = false
-      
-      const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
-      const isScrolledUp = distanceFromBottom > SCROLL_THRESHOLD
-      onScrollStateChange?.(isScrolledUp)
+    }
+
+    const handlePointerUp = () => {
+      pointerStartYRef.current = null
+    }
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.deltaY < 0) {
+        markDisengaged()
+      }
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (['PageUp', 'ArrowUp', 'Home'].includes(e.key)) {
+        markDisengaged()
+      }
     }
     
-    container.addEventListener('scroll', handleScroll, { passive: true })
-    return () => container.removeEventListener('scroll', handleScroll)
+    container.addEventListener('pointerdown', handlePointerDown, { passive: true })
+    container.addEventListener('pointermove', handlePointerMove, { passive: true })
+    container.addEventListener('pointerup', handlePointerUp, { passive: true })
+    container.addEventListener('pointercancel', handlePointerUp, { passive: true })
+    container.addEventListener('wheel', handleWheel, { passive: true })
+    container.addEventListener('keydown', handleKeyDown)
+    
+    return () => {
+      container.removeEventListener('pointerdown', handlePointerDown)
+      container.removeEventListener('pointermove', handlePointerMove)
+      container.removeEventListener('pointerup', handlePointerUp)
+      container.removeEventListener('pointercancel', handlePointerUp)
+      container.removeEventListener('wheel', handleWheel)
+      container.removeEventListener('keydown', handleKeyDown)
+    }
   }, [containerRef, onScrollStateChange])
 
   useEffect(() => {
@@ -84,15 +119,19 @@ export function useAutoScroll<T extends Message>({
     if (currentCount > prevCount) {
       const newMessage = messages[currentCount - 1]
       if (newMessage?.info.role === 'user') {
-        isFollowingRef.current = true
         scrollToBottom()
         return
       }
     }
 
-    if (isFollowingRef.current) {
-      scrollToBottom()
+    const timeSinceUserScroll = Date.now() - userScrolledAtRef.current
+    const recentlyScrolled = timeSinceUserScroll < SCROLL_LOCK_MS
+    
+    if (recentlyScrolled || userDisengagedRef.current) {
+      return
     }
+
+    scrollToBottom()
   }, [messages, containerRef, scrollToBottom])
 
   return { scrollToBottom }
