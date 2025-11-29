@@ -1,9 +1,10 @@
 import { memo } from 'react'
 import type { components } from '@/api/opencode-types'
-import { Copy } from 'lucide-react'
+import { Copy, Volume2, Square, Loader2 } from 'lucide-react'
 import { TextPart } from './TextPart'
 import { PatchPart } from './PatchPart'
 import { ToolCallPart } from './ToolCallPart'
+import { useTTS } from '@/hooks/useTTS'
 
 type Part = components['schemas']['Part']
 
@@ -13,6 +14,7 @@ interface MessagePartProps {
   allParts?: Part[]
   partIndex?: number
   onFileClick?: (filePath: string, lineNumber?: number) => void
+  messageTextContent?: string
 }
 
 function getCopyableContent(part: Part, allParts?: Part[]): string {
@@ -74,9 +76,49 @@ function CopyButton({ content, title, className = "" }: { content: string; title
   )
 }
 
+interface TTSButtonProps {
+  content: string
+  className?: string
+}
+
+export function TTSButton({ content, className = "" }: TTSButtonProps) {
+  const { speak, stop, isEnabled, isPlaying, isLoading, currentText } = useTTS()
+  
+  if (!isEnabled || !content.trim()) {
+    return null
+  }
+  
+  const isThisPlaying = (isPlaying || isLoading) && currentText === content
+  
+  const handleClick = () => {
+    if (isThisPlaying) {
+      stop()
+    } else {
+      speak(content)
+    }
+  }
+
+  return (
+    <button
+      onClick={handleClick}
+      className={`p-1.5 rounded ${isThisPlaying ? 'bg-red-500/20 text-red-500 hover:bg-red-500/30' : 'bg-card hover:bg-card-hover text-muted-foreground hover:text-foreground'} ${className}`}
+      title={isThisPlaying ? "Stop playback" : "Read aloud"}
+      disabled={isLoading && currentText !== content}
+    >
+      {isLoading && isThisPlaying ? (
+        <Loader2 className="w-4 h-4 animate-spin" />
+      ) : isThisPlaying ? (
+        <Square className="w-4 h-4" />
+      ) : (
+        <Volume2 className="w-4 h-4" />
+      )}
+    </button>
+  )
+}
 
 
-export const MessagePart = memo(function MessagePart({ part, role, allParts, partIndex, onFileClick }: MessagePartProps) {
+
+export const MessagePart = memo(function MessagePart({ part, role, allParts, partIndex, onFileClick, messageTextContent }: MessagePartProps) {
   const copyableContent = getCopyableContent(part, allParts)
   
   switch (part.type) {
@@ -120,6 +162,7 @@ export const MessagePart = memo(function MessagePart({ part, role, allParts, par
         <div className="text-xs text-muted-foreground my-1 flex items-center gap-2">
           <span>${part.cost.toFixed(4)} • {part.tokens.input + part.tokens.output} tokens</span>
           <CopyButton content={copyableContent} title="Copy step complete" />
+          {messageTextContent && <TTSButton content={messageTextContent} />}
         </div>
       )
     case 'file':

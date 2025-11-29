@@ -6,7 +6,7 @@ import { initializeDatabase } from './db/schema'
 import { createRepoRoutes } from './routes/repos'
 import { createSettingsRoutes } from './routes/settings'
 import { createHealthRoutes } from './routes/health'
-
+import { createTTSRoutes, cleanupExpiredCache } from './routes/tts'
 import { createFileRoutes } from './routes/files'
 import { createProvidersRoutes } from './routes/providers'
 import { ensureDirectoryExists, writeFileContent } from './services/file-operations'
@@ -130,6 +130,8 @@ try {
   await cleanupOrphanedDirectories(db)
   logger.info('Orphaned directory cleanup completed')
   
+  await cleanupExpiredCache()
+  
   await ensureDefaultConfigExists()
   await syncDefaultConfigToDisk()
   
@@ -144,6 +146,7 @@ app.route('/api/settings', createSettingsRoutes(db))
 app.route('/api/health', createHealthRoutes(db))
 app.route('/api/files', createFileRoutes(db))
 app.route('/api/providers', createProvidersRoutes())
+app.route('/api/tts', createTTSRoutes(db))
 
 app.all('/api/opencode/*', async (c) => {
   const request = c.req.raw

@@ -6,6 +6,15 @@ export const CustomCommandSchema = z.object({
   promptTemplate: z.string(),
 });
 
+export const TTSConfigSchema = z.object({
+  enabled: z.boolean(),
+  endpoint: z.string(),
+  apiKey: z.string(),
+  voice: z.string(),
+  model: z.string(),
+  speed: z.number().min(0.25).max(4.0),
+});
+
 export const CustomAgentSchema = z.object({
   name: z.string(),
   description: z.string(),
@@ -35,7 +44,17 @@ export const UserPreferencesSchema = z.object({
   customCommands: z.array(CustomCommandSchema),
   customAgents: z.array(CustomAgentSchema),
   gitToken: z.string().optional(),
+  tts: TTSConfigSchema.optional(),
 });
+
+export const DEFAULT_TTS_CONFIG = {
+  enabled: false,
+  endpoint: "https://api.openai.com/v1/audio/speech",
+  apiKey: "",
+  voice: "alloy",
+  model: "tts-1",
+  speed: 1.0,
+};
 
 export const DEFAULT_USER_PREFERENCES = {
   theme: "dark" as const,
@@ -47,6 +66,7 @@ export const DEFAULT_USER_PREFERENCES = {
   customCommands: [],
   customAgents: [],
   gitToken: undefined,
+  tts: DEFAULT_TTS_CONFIG,
 };
 
 export const SettingsResponseSchema = z.object({

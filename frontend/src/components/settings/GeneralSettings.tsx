@@ -1,12 +1,22 @@
+import { useState, useEffect } from 'react'
 import { useSettings } from '@/hooks/useSettings'
 import { Loader2 } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
+import { TTSSettings } from './TTSSettings'
 
 export function GeneralSettings() {
   const { preferences, isLoading, updateSettings, isUpdating } = useSettings()
+  
+  const [gitToken, setGitToken] = useState('')
+  
+  useEffect(() => {
+    if (preferences) {
+      setGitToken(preferences.gitToken || '')
+    }
+  }, [preferences])
 
   if (isLoading) {
     return (
@@ -108,8 +118,9 @@ export function GeneralSettings() {
             id="gitToken"
             type="password"
             placeholder="ghp_..."
-            value={preferences?.gitToken || ''}
-            onChange={(e) => updateSettings({ gitToken: e.target.value })}
+            value={gitToken}
+            onChange={(e) => setGitToken(e.target.value)}
+            onBlur={() => updateSettings({ gitToken })}
             className="bg-background border-border text-foreground placeholder:text-muted-foreground"
           />
           <p className="text-sm text-muted-foreground">
@@ -123,6 +134,10 @@ export function GeneralSettings() {
             <span>Saving...</span>
           </div>
         )}
+      </div>
+
+      <div className="mt-6">
+        <TTSSettings />
       </div>
     </div>
   )

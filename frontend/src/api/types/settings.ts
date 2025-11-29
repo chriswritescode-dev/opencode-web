@@ -4,6 +4,24 @@ export interface CustomCommand {
   promptTemplate: string
 }
 
+export interface TTSConfig {
+  enabled: boolean
+  endpoint: string
+  apiKey: string
+  voice: string
+  model: string
+  speed: number
+}
+
+export const DEFAULT_TTS_CONFIG: TTSConfig = {
+  enabled: false,
+  endpoint: 'https://api.openai.com/v1/audio/speech',
+  apiKey: '',
+  voice: 'alloy',
+  model: 'tts-1',
+  speed: 1.0,
+}
+
 export interface CustomAgent {
   name: string
   description: string
@@ -22,6 +40,7 @@ export interface UserPreferences {
   customCommands: CustomCommand[]
   customAgents: CustomAgent[]
   gitToken?: string
+  tts?: TTSConfig
 }
 
 export interface SettingsResponse {
@@ -87,4 +106,5 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   customCommands: [],
   customAgents: [],
   gitToken: undefined,
+  tts: DEFAULT_TTS_CONFIG,
 }

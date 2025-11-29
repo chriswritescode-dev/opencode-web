@@ -4,6 +4,14 @@ import { useSettings } from '@/hooks/useSettings'
 import { MessagePart } from './MessagePart'
 import type { MessageWithParts } from '@/api/types'
 
+function getMessageTextContent(msg: MessageWithParts): string {
+  return msg.parts
+    .filter(p => p.type === 'text')
+    .map(p => p.text || '')
+    .join('\n\n')
+    .trim()
+}
+
 interface MessageThreadProps {
   opcodeUrl: string
   sessionID: string
@@ -189,6 +197,7 @@ export const MessageThread = memo(function MessageThread({ opcodeUrl, sessionID,
                         allParts={msg.parts}
                         partIndex={index}
                         onFileClick={onFileClick}
+                        messageTextContent={msg.info.role === 'assistant' ? getMessageTextContent(msg) : undefined}
                       />
                     </div>
                   ))}
