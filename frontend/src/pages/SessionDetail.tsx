@@ -19,7 +19,7 @@ import { useSettingsDialog } from "@/hooks/useSettingsDialog";
 import { usePermissionRequests } from "@/hooks/usePermissionRequests";
 import { useAutoScroll } from "@/hooks/useAutoScroll";
 import { useEffect, useRef, useCallback } from "react";
-import { Loader2 } from "lucide-react";
+import { MessageSkeleton } from "@/components/message/MessageSkeleton";
 import type { PermissionResponse } from "@/api/types";
 
 export function SessionDetail() {
@@ -47,7 +47,7 @@ export function SessionDetail() {
   
   const repoDirectory = repo?.fullPath;
 
-  const { data: messages } = useMessages(opcodeUrl, sessionId, repoDirectory);
+  const { data: messages, isLoading: messagesLoading } = useMessages(opcodeUrl, sessionId, repoDirectory);
 
   const { scrollToBottom } = useAutoScroll({
     containerRef: messageContainerRef,
@@ -131,37 +131,33 @@ export function SessionDetail() {
     await openCodeClient.respondToPermission(permissionSessionID, permissionID, response)
   }, [openCodeClient]);
 
-  if (repoLoading || sessionLoading) {
+  
+
+  if (!sessionId) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-background via-background to-background">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-background via-background to-background text-muted-foreground">
+        Session not found
       </div>
     );
   }
 
-  if (!repo || !sessionId) {
+  if (!repo) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-background via-background to-background text-muted-foreground">
-        Session not found
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-background via-background to-background">
+        <div className="flex flex-col items-center gap-2">
+          <div className="w-8 h-8 animate-spin rounded-full border-2 border-muted border-t-foreground" />
+          <span className="text-muted-foreground">Loading repository...</span>
+        </div>
       </div>
     );
   }
-  
-  if (!session) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-background via-background to-background text-muted-foreground">
-        Session not found
-      </div>
-    );
-  }
-  
-  
+
   return (
     <div className="h-dvh max-h-dvh overflow-hidden bg-gradient-to-br from-background via-background to-background flex flex-col">
       <SessionDetailHeader
         repo={repo}
         sessionId={sessionId}
-        sessionTitle={session.title || "Untitled Session"}
+        sessionTitle={session?.title || "Untitled Session"}
         repoId={repoId}
         isConnected={isConnected}
         isReconnecting={isReconnecting}
@@ -174,7 +170,9 @@ export function SessionDetail() {
 
       <div className="flex-1 overflow-hidden flex flex-col relative">
         <div key={sessionId} ref={messageContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden pb-28 overscroll-contain">
-          {opcodeUrl && repoDirectory && (
+          {repoLoading || sessionLoading || messagesLoading ? (
+            <MessageSkeleton />
+          ) : opcodeUrl && repoDirectory ? (
             <MessageThread 
               opcodeUrl={opcodeUrl} 
               sessionID={sessionId} 
@@ -182,7 +180,7 @@ export function SessionDetail() {
               messages={messages}
               onFileClick={handleFileClick}
             />
-          )}
+          ) : null}
         </div>
         {opcodeUrl && repoDirectory && (
           <div className="absolute bottom-0 left-0 right-0 flex justify-center">

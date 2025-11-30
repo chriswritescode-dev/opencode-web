@@ -45,5 +45,3 @@ export const MessageSchema = z.object({
 })
 
 export type FileDiff = z.infer<typeof FileDiffSchema>
-export type Session = z.infer<typeof SessionSchema>
-export type Message = z.infer<typeof MessageSchema>
