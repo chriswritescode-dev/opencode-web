@@ -21,7 +21,9 @@ RUN apt-get update && apt-get install -y \
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
 RUN curl -fsSL https://bun.sh/install | bash && \
-    ln -s $HOME/.bun/bin/bun /usr/local/bin/bun
+    mv /root/.bun /opt/bun && \
+    chmod -R 755 /opt/bun && \
+    ln -s /opt/bun/bin/bun /usr/local/bin/bun
 
 WORKDIR /app
 
