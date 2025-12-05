@@ -111,7 +111,7 @@ export const SessionList = ({
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-h-0">
       <div className="p-4 flex-shrink-0">
         <div className="flex items-center gap-3 mb-3">
           <div className="relative flex-1">
@@ -180,7 +180,7 @@ export const SessionList = ({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-4">
+      <div className="flex-1 overflow-y-auto px-4 pb-4 min-h-0">
         <div className="flex flex-col gap-2">
           {filteredSessions.length === 0 ? (
             <div className="text-sm text-muted-foreground text-center py-4">
