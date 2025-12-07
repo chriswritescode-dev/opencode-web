@@ -22,6 +22,7 @@ export function ProviderSettings() {
   const [oauthDialogOpen, setOauthDialogOpen] = useState(false)
   const [oauthCallbackDialogOpen, setOauthCallbackDialogOpen] = useState(false)
   const [oauthResponse, setOauthResponse] = useState<OAuthAuthorizeResponse | null>(null)
+  const [isOAuthMode, setIsOAuthMode] = useState(false)
   const queryClient = useQueryClient()
 
   const { data: providers, isLoading: providersLoading } = useQuery<Provider[]>({
@@ -47,6 +48,7 @@ export function ProviderSettings() {
       queryClient.invalidateQueries({ queryKey: ['provider-credentials'] })
       setSelectedProvider(null)
       setApiKey('')
+      setIsOAuthMode(false)
     },
   })
 
@@ -75,11 +77,17 @@ export function ProviderSettings() {
     setOauthCallbackDialogOpen(true)
   }
 
-  const handleOAuthSuccess = () => {
+  const handleOAuthDialogClose = () => {
+    setOauthDialogOpen(false)
+    setSelectedProvider(null)
+    setIsOAuthMode(false)
+  }
+
+const handleOAuthSuccess = () => {
     setOauthCallbackDialogOpen(false)
     setOauthResponse(null)
-    queryClient.invalidateQueries({ queryKey: ['provider-credentials'] })
     setSelectedProvider(null)
+    setIsOAuthMode(false)
   }
 
   const getProviderAuthMethods = (providerId: string) => {
@@ -180,6 +188,7 @@ export function ProviderSettings() {
                           variant={hasKey ? 'outline' : 'default'}
                           onClick={() => {
                             setSelectedProvider(provider.id)
+                            setIsOAuthMode(true)
                             setOauthDialogOpen(true)
                           }}
                         >
@@ -193,6 +202,7 @@ export function ProviderSettings() {
                           variant={hasKey ? 'outline' : 'default'}
                           onClick={() => {
                             setSelectedProvider(provider.id)
+                            setIsOAuthMode(false)
                           }}
                         >
                           <Key className="h-4 w-4 mr-1" />
@@ -218,7 +228,7 @@ export function ProviderSettings() {
         </div>
       )}
 
-      <Dialog open={!!selectedProvider} onOpenChange={(open) => !open && setSelectedProvider(null)}>
+      <Dialog open={!!selectedProvider && !isOAuthMode && !oauthDialogOpen && !oauthCallbackDialogOpen} onOpenChange={(open) => !open && setSelectedProvider(null)}>
         <DialogContent className="bg-card border-border">
           <DialogHeader>
             <DialogTitle>Set API Key for {selectedProvider}</DialogTitle>
@@ -274,7 +284,7 @@ export function ProviderSettings() {
           providerId={selectedProvider}
           providerName={providers?.find(p => p.id === selectedProvider)?.name || selectedProvider}
           open={oauthDialogOpen}
-          onOpenChange={setOauthDialogOpen}
+          onOpenChange={handleOAuthDialogClose}
           onSuccess={handleOAuthAuthorize}
         />
       )}
