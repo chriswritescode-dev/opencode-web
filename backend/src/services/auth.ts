@@ -38,6 +38,21 @@ export class AuthService {
     logger.info(`Set credentials for provider: ${providerId}`)
   }
 
+  async setOAuth(providerId: string, credentials: { access: string; refresh: string; expires: number }): Promise<void> {
+    const auth = await this.getAll()
+    auth[providerId] = {
+      type: 'oauth',
+      access: credentials.access,
+      refresh: credentials.refresh,
+      expires: credentials.expires,
+    }
+
+    await fs.mkdir(path.dirname(this.authPath), { recursive: true })
+    await fs.writeFile(this.authPath, JSON.stringify(auth, null, 2), { mode: 0o600 })
+    
+    logger.info(`Set OAuth credentials for provider: ${providerId}`)
+  }
+
   async delete(providerId: string): Promise<void> {
     const auth = await this.getAll()
     delete auth[providerId]
@@ -59,5 +74,22 @@ export class AuthService {
   async get(providerId: string): Promise<AuthEntry | null> {
     const auth = await this.getAll()
     return auth[providerId] || null
+  }
+
+  async isOAuth(providerId: string): Promise<boolean> {
+    const entry = await this.get(providerId)
+    return entry?.type === 'oauth'
+  }
+
+  async getOAuth(providerId: string): Promise<{ access: string; refresh: string; expires: number } | null> {
+    const entry = await this.get(providerId)
+    if (entry?.type === 'oauth') {
+      return {
+        access: entry.access!,
+        refresh: entry.refresh!,
+        expires: entry.expires!,
+      }
+    }
+    return null
   }
 }

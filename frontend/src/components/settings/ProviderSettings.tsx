@@ -5,16 +5,23 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, Key, Check, X, Plus } from 'lucide-react'
+import { Loader2, Key, Check, X, Plus, Shield } from 'lucide-react'
 import { providerCredentialsApi, getProviders, type Provider } from '@/api/providers'
+import { oauthApi, type OAuthAuthorizeResponse } from '@/api/oauth'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AddProviderDialog } from './AddProviderDialog'
+import { OAuthAuthorizeDialog } from './OAuthAuthorizeDialog'
+import { OAuthCallbackDialog } from './OAuthCallbackDialog'
 
 export function ProviderSettings() {
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null)
   const [apiKey, setApiKey] = useState('')
   const [showApiKey, setShowApiKey] = useState(false)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
+  
+  const [oauthDialogOpen, setOauthDialogOpen] = useState(false)
+  const [oauthCallbackDialogOpen, setOauthCallbackDialogOpen] = useState(false)
+  const [oauthResponse, setOauthResponse] = useState<OAuthAuthorizeResponse | null>(null)
   const queryClient = useQueryClient()
 
   const { data: providers, isLoading: providersLoading } = useQuery<Provider[]>({
@@ -26,6 +33,11 @@ export function ProviderSettings() {
   const { data: credentialsList, isLoading: credentialsLoading } = useQuery({
     queryKey: ['provider-credentials'],
     queryFn: () => providerCredentialsApi.list(),
+  })
+
+  const { data: authMethods } = useQuery({
+    queryKey: ['provider-auth-methods'],
+    queryFn: () => oauthApi.getAuthMethods(),
   })
 
   const setCredentialMutation = useMutation({
@@ -55,6 +67,31 @@ export function ProviderSettings() {
     if (confirm(`Remove credentials for ${providerId}?`)) {
       deleteCredentialMutation.mutate(providerId)
     }
+  }
+
+  const handleOAuthAuthorize = (response: OAuthAuthorizeResponse) => {
+    setOauthResponse(response)
+    setOauthDialogOpen(false)
+    setOauthCallbackDialogOpen(true)
+  }
+
+  const handleOAuthSuccess = () => {
+    setOauthCallbackDialogOpen(false)
+    setOauthResponse(null)
+    queryClient.invalidateQueries({ queryKey: ['provider-credentials'] })
+    setSelectedProvider(null)
+  }
+
+  const getProviderAuthMethods = (providerId: string) => {
+    return authMethods?.[providerId] || []
+  }
+
+  const supportsOAuth = (providerId: string) => {
+    return getProviderAuthMethods(providerId).some(method => method.type === 'oauth')
+  }
+
+  const supportsApiKey = (providerId: string) => {
+    return getProviderAuthMethods(providerId).some(method => method.type === 'api')
   }
 
   const hasCredentials = (providerId: string) => {
@@ -98,6 +135,9 @@ export function ProviderSettings() {
             const hasKey = hasCredentials(provider.id)
             const modelCount = Object.keys(provider.models || {}).length
 
+            const providerSupportsOAuth = supportsOAuth(provider.id)
+            const providerSupportsApiKey = supportsApiKey(provider.id)
+
             return (
               <Card key={provider.id} className="bg-card border-border">
                 <CardHeader>
@@ -116,6 +156,12 @@ export function ProviderSettings() {
                             No Key
                           </Badge>
                         )}
+                        {providerSupportsOAuth && (
+                          <Badge variant="outline" className="text-xs">
+                            <Shield className="h-3 w-3 mr-1" />
+                            OAuth
+                          </Badge>
+                        )}
                       </CardTitle>
                       <CardDescription className="mt-1">
                         {provider.npm ? <span className="text-xs">Package: {provider.npm}</span> : null}
@@ -128,14 +174,31 @@ export function ProviderSettings() {
                       </CardDescription>
                     </div>
                     <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant={hasKey ? 'outline' : 'default'}
-                        onClick={() => setSelectedProvider(provider.id)}
-                      >
-                        <Key className="h-4 w-4 mr-1" />
-                        {hasKey ? 'Update' : 'Add'} Key
-                      </Button>
+                      {providerSupportsOAuth && (
+                        <Button
+                          size="sm"
+                          variant={hasKey ? 'outline' : 'default'}
+                          onClick={() => {
+                            setSelectedProvider(provider.id)
+                            setOauthDialogOpen(true)
+                          }}
+                        >
+                          <Shield className="h-4 w-4 mr-1" />
+                          {hasKey ? 'Update' : 'Add'} OAuth
+                        </Button>
+                      )}
+                      {providerSupportsApiKey && (
+                        <Button
+                          size="sm"
+                          variant={hasKey ? 'outline' : 'default'}
+                          onClick={() => {
+                            setSelectedProvider(provider.id)
+                          }}
+                        >
+                          <Key className="h-4 w-4 mr-1" />
+                          {hasKey ? 'Update' : 'Add'} Key
+                        </Button>
+                      )}
                       {hasKey && (
                         <Button
                           size="sm"
@@ -205,6 +268,27 @@ export function ProviderSettings() {
       </Dialog>
 
       <AddProviderDialog open={addDialogOpen} onOpenChange={setAddDialogOpen} />
+
+      {selectedProvider && (
+        <OAuthAuthorizeDialog
+          providerId={selectedProvider}
+          providerName={providers?.find(p => p.id === selectedProvider)?.name || selectedProvider}
+          open={oauthDialogOpen}
+          onOpenChange={setOauthDialogOpen}
+          onSuccess={handleOAuthAuthorize}
+        />
+      )}
+
+      {selectedProvider && oauthResponse && (
+        <OAuthCallbackDialog
+          providerId={selectedProvider}
+          providerName={providers?.find(p => p.id === selectedProvider)?.name || selectedProvider}
+          authResponse={oauthResponse}
+          open={oauthCallbackDialogOpen}
+          onOpenChange={setOauthCallbackDialogOpen}
+          onSuccess={handleOAuthSuccess}
+        />
+      )}
     </div>
   )
 }

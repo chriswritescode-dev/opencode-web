@@ -9,6 +9,7 @@ import { createHealthRoutes } from './routes/health'
 import { createTTSRoutes, cleanupExpiredCache } from './routes/tts'
 import { createFileRoutes } from './routes/files'
 import { createProvidersRoutes } from './routes/providers'
+import { createOAuthRoutes } from './routes/oauth'
 import { ensureDirectoryExists, writeFileContent } from './services/file-operations'
 import { SettingsService } from './services/settings'
 import { opencodeServerManager } from './services/opencode-single-server'
@@ -147,6 +148,7 @@ app.route('/api/settings', createSettingsRoutes(db))
 app.route('/api/health', createHealthRoutes(db))
 app.route('/api/files', createFileRoutes(db))
 app.route('/api/providers', createProvidersRoutes())
+app.route('/api/oauth', createOAuthRoutes())
 app.route('/api/tts', createTTSRoutes(db))
 
 app.all('/api/opencode/*', async (c) => {
