@@ -440,13 +440,15 @@ export const useSendShell = (opcodeUrl: string | null | undefined, directory?: s
   });
 };
 
-export const useConfig = (opcodeUrl: string | null | undefined) => {
-  const client = useOpenCodeClient(opcodeUrl);
+export const useConfig = (opcodeUrl: string | null | undefined, directory?: string) => {
+  const client = useOpenCodeClient(opcodeUrl, directory);
 
   return useQuery({
-    queryKey: ["opencode", "config", opcodeUrl],
+    queryKey: ["opencode", "config", opcodeUrl, directory],
     queryFn: () => client!.getConfig(),
     enabled: !!client,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 };
 

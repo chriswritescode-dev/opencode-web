@@ -6,12 +6,12 @@ import { useCommandHandler } from '@/hooks/useCommandHandler'
 import { useFileSearch } from '@/hooks/useFileSearch'
 
 import { useUserBash } from '@/stores/userBashStore'
+import { useModelStore } from '@/stores/modelStore'
 import { ChevronDown } from 'lucide-react'
 
 import { CommandSuggestions } from '@/components/command/CommandSuggestions'
 import { MentionSuggestions, type MentionItem } from './MentionSuggestions'
 import { detectMentionTrigger, parsePromptToParts, getFilename, filterAgentsByQuery } from '@/lib/promptParser'
-import { getSessionModel } from '@/lib/model'
 import { getModel, formatModelName } from '@/api/providers'
 import type { components } from '@/api/opencode-types'
 import type { MessageWithParts, FileInfo } from '@/api/types'
@@ -69,7 +69,7 @@ export function PromptInput({
   const sendShell = useSendShell(opcodeUrl, directory)
   const abortSession = useAbortSession(opcodeUrl, directory, sessionID)
   const { data: messages } = useMessages(opcodeUrl, sessionID, directory)
-  const { data: config } = useConfig(opcodeUrl)
+  const { data: config } = useConfig(opcodeUrl, directory)
   const { preferences, updateSettings } = useSettings()
   const { filterCommands } = useCommands(opcodeUrl)
   const { executeCommand } = useCommandHandler({
@@ -430,20 +430,22 @@ export function PromptInput({
   const modeColor = currentMode === 'plan' ? 'text-yellow-600 dark:text-yellow-500' : 'text-green-600 dark:text-green-500'
   const modeBg = currentMode === 'plan' ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-green-500/10 border-green-500/30'
 
-  const currentModel = getSessionModel(messages, config?.model) || ''
+  const { model: selectedModel, initializeFromConfig, getModelString } = useModelStore()
+  const currentModel = getModelString() || ''
+
+  useEffect(() => {
+    if (config?.model) {
+      initializeFromConfig(config.model)
+    }
+  }, [config?.model, initializeFromConfig])
 
   useEffect(() => {
     const loadModelName = async () => {
-      if (currentModel) {
+      if (selectedModel) {
         try {
-          const [providerId, modelId] = currentModel.split('/')
-          if (providerId && modelId) {
-            const model = await getModel(providerId, modelId)
-            if (model) {
-              setModelName(formatModelName(model))
-            } else {
-              setModelName(currentModel)
-            }
+          const model = await getModel(selectedModel.providerID, selectedModel.modelID)
+          if (model) {
+            setModelName(formatModelName(model))
           } else {
             setModelName(currentModel)
           }
@@ -456,7 +458,7 @@ export function PromptInput({
     }
 
     loadModelName()
-  }, [currentModel])
+  }, [selectedModel, currentModel])
 
   useEffect(() => {
     if (textareaRef.current && !disabled && !hasActiveStream) {

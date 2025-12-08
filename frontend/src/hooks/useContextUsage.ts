@@ -1,8 +1,7 @@
-import { useMemo } from 'react'
-import { useMessages } from './useOpenCode'
-import { useSettings } from './useSettings'
+import { useMemo, useEffect } from 'react'
+import { useMessages, useConfig } from './useOpenCode'
 import { useQuery } from '@tanstack/react-query'
-import { getSessionModel } from '@/lib/model'
+import { useModelStore } from '@/stores/modelStore'
 
 interface ContextUsage {
   totalTokens: number
@@ -43,7 +42,14 @@ async function fetchProviders(opcodeUrl: string): Promise<ProvidersResponse> {
 
 export const useContextUsage = (opcodeUrl: string | null | undefined, sessionID: string | undefined, directory?: string): ContextUsage => {
   const { data: messages, isLoading: messagesLoading } = useMessages(opcodeUrl, sessionID, directory)
-  const { preferences } = useSettings()
+  const { data: config } = useConfig(opcodeUrl, directory)
+  const { getModelString, initializeFromConfig } = useModelStore()
+
+  useEffect(() => {
+    if (config?.model) {
+      initializeFromConfig(config.model)
+    }
+  }, [config?.model, initializeFromConfig])
 
   const { data: providersData } = useQuery({
     queryKey: ['providers', opcodeUrl],
@@ -53,7 +59,7 @@ export const useContextUsage = (opcodeUrl: string | null | undefined, sessionID:
   })
 
   return useMemo(() => {
-    const currentModel = getSessionModel(messages, preferences?.defaultModel)
+    const currentModel = getModelString() || null
 
     const assistantMessages = messages?.filter(msg => msg.info.role === 'assistant') || []
     let latestAssistantMessage = assistantMessages[assistantMessages.length - 1]
@@ -101,5 +107,5 @@ export const useContextUsage = (opcodeUrl: string | null | undefined, sessionID:
       currentModel,
       isLoading: false
     }
-  }, [messages, messagesLoading, preferences?.defaultModel, providersData])
+  }, [messages, messagesLoading, getModelString, providersData])
 }
