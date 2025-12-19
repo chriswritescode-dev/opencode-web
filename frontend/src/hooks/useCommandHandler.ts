@@ -103,21 +103,15 @@ export function useCommandHandler({
 
         case 'compact':
         case 'summarize': {
-          // Get current model from model selection state
           if (!model?.providerID || !model?.modelID) {
             showToast.error('No model selected. Please select a provider and model first.')
-            return
+            break
           }
 
-          // Show compaction started toast
-          if (command.name === 'compact') {
-            showToast.info('Compacting session...', { duration: 2000 })
-          }
+          showToast.info('Compacting session...', { duration: 2000 })
 
-          // Set session status to compacting
           setSessionStatus(sessionID, { type: 'compact' })
 
-          // Call the summarize endpoint
           await client.summarizeSession(
             sessionID,
             model.providerID,
