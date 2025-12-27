@@ -44,30 +44,33 @@ function useActiveRepos(queryClient: ReturnType<typeof useQueryClient>): ActiveR
       timeoutRef.current = setTimeout(() => {
         const cache = queryClient.getQueryCache()
         const queries = cache.getAll()
-        const repoMap = new Map<string, Set<string>>()
+        const repoMap = new Map<string, { directory?: string, sessionIds: Set<string> }>()
 
         queries.forEach((query) => {
           const key = query.queryKey
           if (key[0] === 'opencode' && key[1] === 'sessions') {
             const url = key[2] as string
+            const directory = key[3] as string | undefined
             
             if (!url || typeof url !== 'string') return
 
-            if (!repoMap.has(url)) {
-              repoMap.set(url, new Set())
+            const repoKey = `${url}|${directory ?? ''}`
+            if (!repoMap.has(repoKey)) {
+              repoMap.set(repoKey, { directory, sessionIds: new Set() })
             }
 
             const sessionsData = query.state.data as Array<{ id: string }> | undefined
             if (sessionsData) {
               sessionsData.forEach((session) => {
-                repoMap.get(url)!.add(session.id)
+                repoMap.get(repoKey)!.sessionIds.add(session.id)
               })
             }
           }
         })
 
         const repos = Array.from(repoMap.entries())
-          .filter(([url]) => {
+          .filter(([repoKey]) => {
+            const url = repoKey.split('|')[0]
             try {
               new URL(url)
               return true
@@ -75,8 +78,9 @@ function useActiveRepos(queryClient: ReturnType<typeof useQueryClient>): ActiveR
               return false
             }
           })
-          .map(([url, sessionIds]) => ({
-            url,
+          .map(([repoKey, { directory, sessionIds }]) => ({
+            url: repoKey.split('|')[0],
+            directory,
             sessions: Array.from(sessionIds).map((id) => ({ id })),
           }))
 
@@ -136,10 +140,11 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
   const getClient = useCallback((sessionID: string): OpenCodeClient | null => {
     for (const repo of activeRepos) {
       if (repo.sessions.some((s) => s.id === sessionID)) {
-        let client = clientsRef.current.get(repo.url)
+        const clientKey = `${repo.url}|${repo.directory ?? ''}`
+        let client = clientsRef.current.get(clientKey)
         if (!client) {
           client = new OpenCodeClient(repo.url, repo.directory)
-          clientsRef.current.set(repo.url, client)
+          clientsRef.current.set(clientKey, client)
         }
         return client
       }
@@ -149,15 +154,15 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     const currentRefs = eventSourceRefs.current
-    const newURLs = new Set(activeRepos.map((r) => r.url))
-    const existingURLs = new Set(currentRefs.keys())
+    const newKeys = new Set(activeRepos.map((r) => `${r.url}|${r.directory ?? ''}`))
+    const existingKeys = new Set(currentRefs.keys())
 
-    existingURLs.forEach((url) => {
-      if (!newURLs.has(url)) {
-        const es = currentRefs.get(url)
+    existingKeys.forEach((key) => {
+      if (!newKeys.has(key)) {
+        const es = currentRefs.get(key)
         if (es) {
           es.close()
-          currentRefs.delete(url)
+          currentRefs.delete(key)
         }
       }
     })
@@ -173,7 +178,8 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
     activeRepos.forEach((repo) => {
       if (!repo.url) return
       
-      const existingES = currentRefs.get(repo.url)
+      const repoKey = `${repo.url}|${repo.directory ?? ''}`
+      const existingES = currentRefs.get(repoKey)
       if (existingES) return
 
       let url: URL
@@ -189,9 +195,13 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
       } else {
         url.pathname += '/stream'
       }
+      
+      if (repo.directory) {
+        url.searchParams.set('directory', repo.directory)
+      }
 
       const es = new EventSource(url.toString())
-      currentRefs.set(repo.url, es)
+      currentRefs.set(repoKey, es)
 
       es.addEventListener('permission.updated', (e) => {
         try {
@@ -222,7 +232,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
       es.onerror = (err) => {
         console.error(`SSE connection error for ${repo.url}:`, err)
         setTimeout(() => {
-          currentRefs.delete(repo.url)
+          currentRefs.delete(repoKey)
         }, 1000)
       }
     })
