@@ -50,7 +50,6 @@ function PermissionDialogWrapper() {
     pendingCount,
     isFromDifferentSession,
     respondToPermission,
-    dismissPermission,
     showDialog,
     setShowDialog,
   } = usePermissionContext()
@@ -61,7 +60,6 @@ function PermissionDialogWrapper() {
       pendingCount={pendingCount}
       isFromDifferentSession={isFromDifferentSession}
       onRespond={respondToPermission}
-      onDismiss={dismissPermission}
       open={showDialog}
       onOpenChange={setShowDialog}
     />
